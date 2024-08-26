@@ -14,6 +14,8 @@ class LoggingMixin:
         return attr
 
 class Product:
+    _instances = []
+
     def __init__(self, name, price, description):
         try:
             if price <= 0:
@@ -21,12 +23,24 @@ class Product:
             self.name = name
             self.price = price
             self.description = description
+            Product._instances.append(self)
         except InvalidPriceError:
             print('Invalid price. EVERYTHING will crash now!!!')
 
-    def str(self):
-        return f'{self.name} - ${self.price} UAH'
-
+    @classmethod
+    def get_product_by_name(cls, name):
+        for instance in cls._instances:
+            if instance.name.lower() == name.lower():
+                return instance
+        return None
+    @classmethod
+    def print_all_instances(cls):
+        # Iterate over all instances and format their attributes
+        instance_strs = []
+        for instance in cls._instances:
+            instance_str = f"'{instance.name}' Price: {instance.price}UAH '{instance.description}'"
+            instance_strs.append(instance_str)
+        return "\n".join(instance_strs)
 
 class Discount:
     def apply(self, price):
@@ -89,17 +103,35 @@ class PayPalProcessor(PaymentProcessor):
 class BankTransferProcessor(PaymentProcessor):
     def __init__(self, account_number, account_holder):
         self.account_number = account_number
-class Cart(DiscountMixin,LoggingMixin):
+
+
+class Cart(DiscountMixin):
     def __init__(self):
         self.products = {}
 
-    def add_product(self, product, quantity):
+    def add_product(self, product_name, quantity):
+        product = Product.get_product_by_name(product_name)
         try:
             if quantity <= 0:
-                raise(InvalidQuantityError)
+                raise InvalidQuantityError
             self.products[product] = self.products.get(product, 0) + quantity
         except:
             print('Invalid quantity of the product. The script will crash now')
+
+    @staticmethod
+    def get_cart_instance(cart_name, cart1, cart2, merged_cart):
+        if cart_name.lower() == 'cart1':
+            return cart1
+        elif cart_name.lower() == 'cart2':
+            return cart2
+        elif cart_name.lower() == 'mergedcart':
+            return merged_cart
+        else:
+            print("Invalid cart name")
+            return None
+
+    def merge(self,cart1,cart2):
+        self.products = {key: cart1.products.get(key,0)+cart2.products.get(key,0) for key in set(cart1.products)|set(cart2.products)}
     def total_cost(self):
         return sum(product.price * quantity for product, quantity in self.products.items())
 
@@ -107,42 +139,48 @@ class Cart(DiscountMixin,LoggingMixin):
         paymentprocessor.pay(self.total_cost())
 
     def __str__(self):
-        return '\n'.join(f'{product} x {quantity} = {product.price * quantity} UAH'for product, quantity in self.products.items())
+        return '\n'.join(f'{product.name} x {quantity} = {product.price * quantity} UAH'for product, quantity in self.products.items())
 
 
 def main():
-    product1 = Product('Ball', 110.00,"round")
-    product2 = Product('Cube', 1000, "edgy")
-    product3 = Product("Pyramid", 100.00, "spiky")
+    ball = Product('Ball', 110.00,"round")
+    cube = Product('Cube', 1000, "edgy")
+    pyramid = Product("Pyramid", 100.00, "spiky")
 
     # Creating an instance of the Cart class and adding products
-    cart = Cart()
-    cart.add_product(product1, 1)
-    cart.add_product(product2, 2)
-    cart.add_product(product3, 1)
+    cinstance1 = Cart()
+    cinstance2 = Cart()
+    merged_cart = Cart()
+    print(Product.print_all_instances())
+    while True:
+        cart_name = input('Enter the cart name (Cart1, Cart2, or MergedCart): ').strip()
+        operator = input('Enter the operator (+ for add, += for merge): ').strip()
+        selected_cart = Cart.get_cart_instance(cart_name, cinstance1, cinstance2, merged_cart)
+        if not selected_cart:
+            continue
+        if operator == '+':
+            product_name = input('Enter the product name to add: ').strip()
+            quantity = int(input('Enter the quantity: ').strip())
+            selected_cart.add_product(product_name, quantity)
+        elif operator == '+=':
+            cart_to_merge_name = input('Enter the name of the cart to merge with: ').strip()
+            cart_to_merge = Cart.get_cart_instance(cart_to_merge_name, cinstance1, cinstance2, merged_cart)
+            if cart_to_merge:
+                merged_cart.merge(selected_cart, cart_to_merge)
 
-    print(cart)
-    print("Total cost:", cart.total_cost())
+
 
     # Applying different types of discounts
     percentage_discount = PercentageDiscount(0)
     fixed_amount_discount = FixedAmountDiscount(0)
 
-    cart.apply_discount(percentage_discount)
-    print(cart)
-    print("Total cost after percentage discount:", cart.total_cost())
+    cinstance1.apply_discount(percentage_discount)
+    print(cinstance1)
+    print("Total cost after percentage discount:", cinstance1.total_cost())
 
-    cart.apply_discount(fixed_amount_discount)
-    print(cart)
-    print("Total cost after fixed amount discount:", cart.total_cost())
+    cinstance1.apply_discount(fixed_amount_discount)
+    print(cinstance1)
+    print("Total cost after fixed amount discount:", cinstance1.total_cost())
 
-    credit_card_processor = CreditCardProcessor("1234-5678-9876-5432", "John Doe", "123", "12/25")
-    paypal_processor = PayPalProcessor("john.doe@example.com")
-    bank_transfer_processor = BankTransferProcessor("987654321", "John Doe")
 
-    cart.pay(credit_card_processor)
-    cart.pay(paypal_processor)
-    cart.pay(bank_transfer_processor)
-
-if __name__ == "__main__":
-    main()
+main()
